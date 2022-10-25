@@ -25,6 +25,7 @@ Controls
 
 import random
 import os
+from math import *
 
 # import basic pygame modules
 import pygame as pg
@@ -41,6 +42,7 @@ BOMB_ODDS = 60  # chances a new bomb will drop
 ALIEN_RELOAD = 12  # frames between new aliens
 SCREENRECT = pg.Rect(0, 0, 640, 480)
 SCORE = 0
+SHOTS_FIRED = 0
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
 
@@ -111,7 +113,7 @@ class Player(pg.sprite.Sprite):
 class Alien(pg.sprite.Sprite):
     """An alien space ship. That slowly moves down the screen."""
 
-    speed = 13
+    speed = 7
     animcycle = 12
     images = []
 
@@ -127,12 +129,28 @@ class Alien(pg.sprite.Sprite):
     def update(self):
         self.rect.move_ip(self.facing, 0)
         if not SCREENRECT.contains(self.rect):
-            self.facing = -self.facing
+            self.facing = -self.facing * 1.2
             self.rect.top = self.rect.bottom + 1
             self.rect = self.rect.clamp(SCREENRECT)
         self.frame = self.frame + 1
-        self.image = self.images[self.frame // self.animcycle % 3]
+        self.image = self.images[self.frame // self.animcycle % len(self.images)]
 
+class DifferentLookAlien(Alien):
+    """An alien that looks different"""
+
+class TargetingAlien(Alien):
+    """An alien that goes slowly directly towards the player"""
+
+    def update(self):
+        player_pos = self.target
+        delta = [player_pos[0] - self.rect.left, player_pos[1] - self.rect.top]
+        delta_len = sqrt(delta[0]**2 + delta[1]**2)
+        if delta_len != 0:
+            delta[0] /= delta_len
+            delta[1] /= delta_len
+        self.rect.move_ip(delta[0] * 6, delta[1] * 6)
+        self.frame += 1
+        self.image = self.images[self.frame // self.animcycle % len(self.images)]
 
 class Explosion(pg.sprite.Sprite):
     """An explosion. Hopefully the Alien and not the player!"""
@@ -224,7 +242,8 @@ class Score(pg.sprite.Sprite):
         """We only update the score in update() when it has changed."""
         if SCORE != self.lastscore:
             self.lastscore = SCORE
-            msg = "Score: %d" % SCORE
+            accuracy = SCORE / max(SHOTS_FIRED, 1)
+            msg = f"Score: {SCORE}         Accuracy: {int(round(accuracy, 2) * 100)}"
             self.image = self.font.render(msg, 0, self.color)
 
 
@@ -250,6 +269,8 @@ def main(winstyle=0):
     img = load_image("explosion1.gif")
     Explosion.images = [img, pg.transform.flip(img, 1, 1)]
     Alien.images = [load_image(im) for im in ("alien1.gif", "alien2.gif", "alien3.gif")]
+    DifferentLookAlien.images = [load_image(im) for im in ("chimp.png","chimp2.png")]
+
     Bomb.images = [load_image("bomb.gif")]
     Shot.images = [load_image("shot.gif")]
 
@@ -297,102 +318,112 @@ def main(winstyle=0):
 
     # initialize our starting sprites
     global SCORE
-    player = Player()
-    Alien()  # note, this 'lives' because it goes into a sprite group
-    if pg.font:
-        all.add(Score())
+    global SHOTS_FIRED
+    while True:
+        player = Player()
+        Alien()  # note, this 'lives' because it goes into a sprite group
+        if pg.font:
+            all.add(Score())
 
-    # Run our main loop whilst the player is alive.
-    while player.alive():
+        # Run our main loop whilst the player is alive.
+        while player.alive():
 
-        # get input
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                return
-            if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
-                return
-            elif event.type == pg.KEYDOWN:
-                if event.key == pg.K_f:
-                    if not fullscreen:
-                        print("Changing to FULLSCREEN")
-                        screen_backup = screen.copy()
-                        screen = pg.display.set_mode(
-                            SCREENRECT.size, winstyle | pg.FULLSCREEN, bestdepth
-                        )
-                        screen.blit(screen_backup, (0, 0))
-                    else:
-                        print("Changing to windowed mode")
-                        screen_backup = screen.copy()
-                        screen = pg.display.set_mode(
-                            SCREENRECT.size, winstyle, bestdepth
-                        )
-                        screen.blit(screen_backup, (0, 0))
-                    pg.display.flip()
-                    fullscreen = not fullscreen
+            # get input
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    return
+                if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
+                    return
+                elif event.type == pg.KEYDOWN:
+                    if event.key == pg.K_f:
+                        if not fullscreen:
+                            print("Changing to FULLSCREEN")
+                            screen_backup = screen.copy()
+                            screen = pg.display.set_mode(
+                                SCREENRECT.size, winstyle | pg.FULLSCREEN, bestdepth
+                            )
+                            screen.blit(screen_backup, (0, 0))
+                        else:
+                            print("Changing to windowed mode")
+                            screen_backup = screen.copy()
+                            screen = pg.display.set_mode(
+                                SCREENRECT.size, winstyle, bestdepth
+                            )
+                            screen.blit(screen_backup, (0, 0))
+                        pg.display.flip()
+                        fullscreen = not fullscreen
 
-        keystate = pg.key.get_pressed()
+            keystate = pg.key.get_pressed()
 
-        # clear/erase the last drawn sprites
-        all.clear(screen, background)
+            # clear/erase the last drawn sprites
+            all.clear(screen, background)
 
-        # update all the sprites
-        all.update()
+            TargetingAlien.target = [player.rect.left, player.rect.top]
 
-        # handle player input
-        direction = keystate[pg.K_RIGHT] - keystate[pg.K_LEFT]
-        player.move(direction)
-        firing = keystate[pg.K_SPACE]
-        if not player.reloading and firing and len(shots) < MAX_SHOTS:
-            Shot(player.gunpos())
-            if pg.mixer:
-                shoot_sound.play()
-        player.reloading = firing
+            # update all the sprites
+            all.update()
 
-        # Create new alien
-        if alienreload:
-            alienreload = alienreload - 1
-        elif not int(random.random() * ALIEN_ODDS):
-            Alien()
-            alienreload = ALIEN_RELOAD
+            # handle player input
+            direction = keystate[pg.K_RIGHT] - keystate[pg.K_LEFT]
+            player.move(direction)
+            firing = keystate[pg.K_SPACE]
+            if not player.reloading and firing and len(shots) < MAX_SHOTS:
+                Shot(player.gunpos())
+                if pg.mixer:
+                    shoot_sound.play()
+                SHOTS_FIRED += 1
+            player.reloading = firing
 
-        # Drop bombs
-        if lastalien and not int(random.random() * BOMB_ODDS):
-            Bomb(lastalien.sprite)
+            # Create new alien
+            if alienreload:
+                alienreload = alienreload - 1
+            elif not int(random.random() * ALIEN_ODDS):
+                random.choice([Alien, TargetingAlien, DifferentLookAlien])()
+                alienreload = ALIEN_RELOAD
 
-        # Detect collisions between aliens and players.
-        for alien in pg.sprite.spritecollide(player, aliens, 1):
-            if pg.mixer:
-                boom_sound.play()
-            Explosion(alien)
-            Explosion(player)
-            SCORE = SCORE + 1
-            player.kill()
+            # Drop bombs
+            if lastalien and not int(random.random() * BOMB_ODDS):
+                Bomb(lastalien.sprite)
 
-        # See if shots hit the aliens.
-        for alien in pg.sprite.groupcollide(aliens, shots, 1, 1).keys():
-            if pg.mixer:
-                boom_sound.play()
-            Explosion(alien)
-            SCORE = SCORE + 1
+            # Detect collisions between aliens and players.
+            for alien in pg.sprite.spritecollide(player, aliens, 1):
+                if pg.mixer:
+                    boom_sound.play()
+                Explosion(alien)
+                Explosion(player)
+                SCORE = SCORE + 1
+                player.kill()
 
-        # See if alien bombs hit the player.
-        for bomb in pg.sprite.spritecollide(player, bombs, 1):
-            if pg.mixer:
-                boom_sound.play()
-            Explosion(player)
-            Explosion(bomb)
-            player.kill()
+            # See if shots hit the aliens.
+            for alien in pg.sprite.groupcollide(aliens, shots, 1, 1).keys():
+                if pg.mixer:
+                    boom_sound.play()
+                Explosion(alien)
+                SCORE = SCORE + 1
 
-        # draw the scene
-        dirty = all.draw(screen)
-        pg.display.update(dirty)
+            # See if alien bombs hit the player.
+            for bomb in pg.sprite.spritecollide(player, bombs, 1):
+                if pg.mixer:
+                    boom_sound.play()
+                Explosion(player)
+                Explosion(bomb)
+                player.kill()
 
-        # cap the framerate at 40fps. Also called 40HZ or 40 times per second.
-        clock.tick(40)
+            # draw the scene
+            dirty = all.draw(screen)
+            pg.display.update(dirty)
+
+            # cap the framerate at 40fps. Also called 40HZ or 40 times per second.
+            clock.tick(40)
+        pg.time.wait(1000)
+        # Reset game
+        all.empty()
+        SCORE = 0
+        SHOTS_FIRED = 0
 
     if pg.mixer:
         pg.mixer.music.fadeout(1000)
-    pg.time.wait(1000)
+    
 
 
 # call the "main" function if running this script
