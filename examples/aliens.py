@@ -21,6 +21,21 @@ Controls
 * Space bar to shoot
 * f key to toggle between fullscreen.
 
+##############
+INFO FOR HACKSOC!
+##############
+
+Here's a list of features you could try to add to this game. Try as many as you
+want, no need to do everything, and even better if you think of some of your own!
+
+ - Make aliens speed up over time
+ - Show player's accuracy percentage (shots hit/shots fired)
+ - Make the game restart when the player dies
+ - Different types of alien:
+    * one that just looks different
+    * one that moves very slowly straight towards the player
+    * one that takes multiple hits to kill
+
 """
 
 import random
